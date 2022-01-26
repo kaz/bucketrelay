@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/kaz/bucketrelay/relay"
+	"go.uber.org/zap"
 )
 
 func run() error {
@@ -18,12 +19,22 @@ func run() error {
 		return fmt.Errorf("failed unmarshal json: %w", err)
 	}
 
-	r, err := relay.New()
+	logger, err := zap.NewDevelopment()
 	if err != nil {
+		return fmt.Errorf("failed to create logger: %w", err)
+	}
+
+	r, err := relay.New(logger)
+	if err != nil {
+		logger.Error("failed to initialize", zap.Error(err))
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	return r.Run(config)
+	if err := r.Run(config); err != nil {
+		logger.Error("failed to run", zap.Error(err))
+		return fmt.Errorf("failed to run: %w", err)
+	}
+	return nil
 }
 
 func main() {

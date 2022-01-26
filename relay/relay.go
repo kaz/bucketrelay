@@ -2,13 +2,14 @@ package relay
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/fsnotify/fsnotify"
+	"go.uber.org/zap"
 )
 
 type (
 	Relay struct {
+		logger  *zap.Logger
 		watcher *fsnotify.Watcher
 		mapping map[string]string
 	}
@@ -18,13 +19,14 @@ type (
 	}
 )
 
-func New() (*Relay, error) {
+func New(logger *zap.Logger) (*Relay, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize watcher: %w", err)
 	}
 
 	return &Relay{
+		logger:  logger,
 		watcher: watcher,
 		mapping: map[string]string{},
 	}, nil
@@ -37,19 +39,23 @@ func (r *Relay) Run(entries []*Entry) error {
 		}
 
 		r.mapping[ent.Source] = ent.Destination
-		log.Printf("\"%v\": WATCHING\n", ent.Source)
+		r.logger.Info("started to watch", zap.Any("entry", ent))
 	}
 
 	for {
 		select {
 		case err := <-r.watcher.Errors:
 			return fmt.Errorf("an error occured while watching file: %w", err)
+
 		case event := <-r.watcher.Events:
-			log.Println(event)
+			r.logger.Info("received event", zap.Any("event", event))
+
 			if event.Op&(fsnotify.Create|fsnotify.Write) > 0 {
 				if err := r.sync(event.Name); err != nil {
 					return fmt.Errorf("failed to sync file: %w", err)
 				}
+
+				r.logger.Info("synced", zap.Any("event", event))
 			}
 		}
 	}
@@ -64,7 +70,5 @@ func (r *Relay) sync(src string) error {
 	if err := copyFile(src, dst); err != nil {
 		return fmt.Errorf("failed to copy file: %w", err)
 	}
-
-	log.Printf("\"%v\" -> \"%v\": SYNCED\n", src, dst)
 	return nil
 }
