@@ -55,6 +55,7 @@ func (r *Relay) Run(entries []*Entry) error {
 		}
 		r.logger.Info("started to watch", zap.Any("entry", entry))
 	}
+	notify("Bucketrelay started!")
 
 	for {
 		select {
@@ -95,6 +96,7 @@ func (r *Relay) sync(src string) error {
 			return fmt.Errorf("failed to copy file: %w", err)
 		}
 
+		notify(fmt.Sprintf("Synced backword: %v", defn.entry.Source))
 		r.logger.Info("synced backword", zap.Any("entry", defn.entry))
 		return nil
 	}

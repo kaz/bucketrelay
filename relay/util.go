@@ -4,7 +4,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+
+	"github.com/gen2brain/beeep"
 )
+
+func notify(message string) error {
+	if err := beeep.Notify(path.Base(os.Args[0]), message, ""); err != nil {
+		return fmt.Errorf("failed to notify: %w", err)
+	}
+	return nil
+}
 
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
