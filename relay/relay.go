@@ -2,9 +2,7 @@ package relay
 
 import (
 	"fmt"
-	"io"
 	"log"
-	"os"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -15,8 +13,8 @@ type (
 		mapping map[string]string
 	}
 	Entry struct {
-		Src string `json:"src"`
-		Dst string `json:"dst"`
+		Source      string `json:"src"`
+		Destination string `json:"dst"`
 	}
 )
 
@@ -34,12 +32,12 @@ func New() (*Relay, error) {
 
 func (r *Relay) Run(entries []*Entry) error {
 	for _, ent := range entries {
-		if err := r.watcher.Add(ent.Src); err != nil {
+		if err := r.watcher.Add(ent.Source); err != nil {
 			return fmt.Errorf("failed to watch file: %w", err)
 		}
 
-		r.mapping[ent.Src] = ent.Dst
-		log.Printf("\"%v\": WATCHING\n", ent.Src)
+		r.mapping[ent.Source] = ent.Destination
+		log.Printf("\"%v\": WATCHING\n", ent.Source)
 	}
 
 	for {
@@ -63,20 +61,8 @@ func (r *Relay) sync(src string) error {
 		return fmt.Errorf("no such src: %v", src)
 	}
 
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open src file: %w", err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("failed to create dst file: %w", err)
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy: %w", err)
+	if err := copyFile(src, dst); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
 	}
 
 	log.Printf("\"%v\" -> \"%v\": SYNCED\n", src, dst)
