@@ -22,5 +22,13 @@ func copyFile(src, dst string) error {
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("failed to copy: %w", err)
 	}
+
+	srcFileInfo, err := srcFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat src file: %w", err)
+	}
+	if err := os.Chtimes(dstFile.Name(), srcFileInfo.ModTime(), srcFileInfo.ModTime()); err != nil {
+		return fmt.Errorf("failed to chtimes: %w", err)
+	}
 	return nil
 }

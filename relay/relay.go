@@ -2,20 +2,27 @@ package relay
 
 import (
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 )
 
 type (
-	Relay struct {
-		logger  *zap.Logger
-		watcher *fsnotify.Watcher
-		mapping map[string]string
-	}
 	Entry struct {
 		Source      string `json:"src"`
 		Destination string `json:"dst"`
+	}
+	Relay struct {
+		logger  *zap.Logger
+		watcher *fsnotify.Watcher
+
+		srcDefn map[string]*SourceDefinition
+	}
+	SourceDefinition struct {
+		entry       *Entry
+		sourceMtime time.Time
 	}
 )
 
@@ -28,18 +35,25 @@ func New(logger *zap.Logger) (*Relay, error) {
 	return &Relay{
 		logger:  logger,
 		watcher: watcher,
-		mapping: map[string]string{},
+		srcDefn: map[string]*SourceDefinition{},
 	}, nil
 }
 
 func (r *Relay) Run(entries []*Entry) error {
-	for _, ent := range entries {
-		if err := r.watcher.Add(ent.Source); err != nil {
-			return fmt.Errorf("failed to watch file: %w", err)
+	for _, entry := range entries {
+		srcFileInfo, err := os.Stat(entry.Source)
+		if err != nil {
+			return fmt.Errorf("failed to stat source: %w", err)
+		}
+		if err := r.watcher.Add(entry.Source); err != nil {
+			return fmt.Errorf("failed to watch source: %w", err)
 		}
 
-		r.mapping[ent.Source] = ent.Destination
-		r.logger.Info("started to watch", zap.Any("entry", ent))
+		r.srcDefn[entry.Source] = &SourceDefinition{
+			entry:       entry,
+			sourceMtime: srcFileInfo.ModTime(),
+		}
+		r.logger.Info("started to watch", zap.Any("entry", entry))
 	}
 
 	for {
@@ -54,21 +68,41 @@ func (r *Relay) Run(entries []*Entry) error {
 				if err := r.sync(event.Name); err != nil {
 					return fmt.Errorf("failed to sync file: %w", err)
 				}
-
-				r.logger.Info("synced", zap.Any("event", event))
 			}
 		}
 	}
 }
 
 func (r *Relay) sync(src string) error {
-	dst, ok := r.mapping[src]
+	defn, ok := r.srcDefn[src]
 	if !ok {
 		return fmt.Errorf("no such src: %v", src)
 	}
 
-	if err := copyFile(src, dst); err != nil {
+	dstFileInfo, err := os.Stat(defn.entry.Destination)
+	if err != nil {
+		r.logger.Warn("failed to stat dst file", zap.Error(err), zap.Any("entry", defn.entry))
+	}
+	defer func() {
+		defn.sourceMtime = time.Now()
+	}()
+
+	if dstFileInfo.ModTime().After(defn.sourceMtime) {
+		r.watcher.Remove(defn.entry.Source)
+		defer r.watcher.Add(defn.entry.Source)
+
+		if err := copyFile(defn.entry.Destination, defn.entry.Source); err != nil {
+			return fmt.Errorf("failed to copy file: %w", err)
+		}
+
+		r.logger.Info("synced backword", zap.Any("entry", defn.entry))
+		return nil
+	}
+
+	if err := copyFile(defn.entry.Source, defn.entry.Destination); err != nil {
 		return fmt.Errorf("failed to copy file: %w", err)
 	}
+
+	r.logger.Info("synced", zap.Any("entry", defn.entry))
 	return nil
 }
