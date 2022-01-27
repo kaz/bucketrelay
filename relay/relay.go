@@ -79,16 +79,13 @@ func (r *Relay) sync(src string) error {
 	if !ok {
 		return fmt.Errorf("no such src: %v", src)
 	}
-
-	dstFileInfo, err := os.Stat(defn.entry.Destination)
-	if err != nil {
-		r.logger.Warn("failed to stat dst file", zap.Error(err), zap.Any("entry", defn.entry))
-	}
 	defer func() {
 		defn.sourceMtime = time.Now()
 	}()
 
-	if dstFileInfo.ModTime().After(defn.sourceMtime) {
+	if dstFileInfo, err := os.Stat(defn.entry.Destination); err != nil {
+		r.logger.Warn("failed to stat dst file", zap.Error(err), zap.Any("entry", defn.entry))
+	} else if dstFileInfo.ModTime().After(defn.sourceMtime) {
 		r.watcher.Remove(defn.entry.Source)
 		defer r.watcher.Add(defn.entry.Source)
 
